@@ -25,16 +25,19 @@ class AnalysisType(Enum):
     MODAL = "MODAL"
     BUCKLING = "BUCKLING"
 
-@dataclass
 class Material:
     """Material properties for FEA"""
-    name: str
-    youngs_modulus: float  # Pa
-    poissons_ratio: float
-    density: float  # kg/m³
-    thermal_conductivity: Optional[float] = None  # W/(m·K)
-    thermal_expansion: Optional[float] = None  # 1/K
-    yield_strength: Optional[float] = None  # Pa
+    def __init__(self, name: str, youngs_modulus: float, poissons_ratio: float, 
+                 density: float, thermal_conductivity: Optional[float] = None,
+                 thermal_expansion: Optional[float] = None, 
+                 yield_strength: Optional[float] = None):
+        self.name = name
+        self.youngs_modulus = youngs_modulus  # Pa
+        self.poissons_ratio = poissons_ratio
+        self.density = density  # kg/m³
+        self.thermal_conductivity = thermal_conductivity  # W/(m·K)
+        self.thermal_expansion = thermal_expansion  # 1/K
+        self.yield_strength = yield_strength  # Pa
     
     @classmethod
     def steel(cls):

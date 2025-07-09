@@ -162,6 +162,291 @@ class OptimizationAlgorithmsEngine:
         
         return alpha
     
+    def optimize(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        General optimization interface
+        
+        Args:
+            params: Dictionary containing optimization parameters
+        """
+        try:
+            objective_function = params['objective_function']
+            variables = params['variables']
+            method = params['method']
+            initial_guess = params['initial_guess']
+            tolerance = params.get('tolerance', self.tolerance)
+            max_iterations = params.get('max_iterations', self.max_iterations)
+            
+            # Parse objective function
+            import sympy as sp
+            from core.expression_parser import expression_parser
+            
+            expr = expression_parser.parse(objective_function)
+            var_symbols = [sp.Symbol(var) for var in variables]
+            
+            # Create numerical function
+            func = sp.lambdify(var_symbols, expr, 'numpy')
+            
+            # Create gradient function
+            grad_exprs = [sp.diff(expr, var) for var in var_symbols]
+            grad_func = sp.lambdify(var_symbols, grad_exprs, 'numpy')
+            
+            def objective(x):
+                return float(func(*x))
+            
+            def gradient(x):
+                result = grad_func(*x)
+                if isinstance(result, (int, float)):
+                    return np.array([result])
+                return np.array(result)
+            
+            # Set up bounds (default to reasonable range)
+            bounds = [(-10, 10)] * len(variables)
+            
+            # Use appropriate method
+            if method == 'gradient_descent':
+                result = self.gradient_descent(objective, gradient, np.array(initial_guess), tolerance, max_iterations)
+            elif method == 'newton_method':
+                result = self.newton_method(objective, gradient, np.array(initial_guess), tolerance, max_iterations)
+            elif method == 'nelder_mead':
+                result = self.nelder_mead(objective, np.array(initial_guess), tolerance, max_iterations)
+            else:
+                # Default to genetic algorithm
+                result = self.genetic_algorithm(objective, bounds, crossover_prob=0.8, mutation_prob=0.1)
+            
+            return {
+                'success': True,
+                'optimal_point': result.x_opt.tolist(),
+                'optimal_value': result.f_opt,
+                'iterations': result.iterations,
+                'convergence_history': result.history.get('f_vals', []) if result.history else []
+            }
+            
+        except Exception as e:
+            return {
+                'success': False,
+                'error': str(e)
+            }
+    
+    def linear_programming(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Linear programming solver
+        
+        Args:
+            params: Dictionary containing LP parameters
+        """
+        try:
+            c = params['c']
+            A = params['A']
+            b = params['b']
+            objective = params.get('objective', 'minimize')
+            bounds = params.get('bounds', None)
+            
+            # Simple simplex-like solver (basic implementation)
+            # This is a simplified version - full implementation would use scipy.optimize.linprog
+            
+            # Convert to standard form: minimize c^T x subject to Ax <= b, x >= 0
+            c = np.array(c)
+            A = np.array(A)
+            b = np.array(b)
+            
+            # If maximizing, negate the objective
+            if objective == 'maximize':
+                c = -c
+            
+            # Use a simple iterative approach for demonstration
+            n_vars = len(c)
+            n_constraints = len(b)
+            
+            # Start with a feasible point (origin if feasible)
+            x = np.zeros(n_vars)
+            
+            # Check if origin is feasible
+            if np.all(A @ x <= b):
+                feasible = True
+            else:
+                # Find a feasible point (simplified)
+                x = np.linalg.lstsq(A, b * 0.9, rcond=None)[0]
+                x = np.maximum(x, 0)  # Ensure non-negativity
+                feasible = np.all(A @ x <= b)
+            
+            if not feasible:
+                return {
+                    'success': False,
+                    'error': 'No feasible solution found'
+                }
+            
+            # Simple gradient-based approach
+            for iteration in range(100):
+                # Compute gradient
+                grad = c
+                
+                # Project gradient onto feasible direction
+                # This is a simplified approach
+                step_size = 0.01
+                x_new = x - step_size * grad
+                
+                # Ensure non-negativity
+                x_new = np.maximum(x_new, 0)
+                
+                # Check constraints
+                if np.all(A @ x_new <= b):
+                    x = x_new
+                else:
+                    # Project back to feasible region
+                    for i in range(n_constraints):
+                        if (A @ x_new)[i] > b[i]:
+                            # Scale back
+                            alpha = b[i] / (A @ x_new)[i] if (A @ x_new)[i] > 0 else 1
+                            x_new = x + alpha * (x_new - x)
+                    x = x_new
+            
+            optimal_value = c @ x
+            if objective == 'maximize':
+                optimal_value = -optimal_value
+            
+            # Compute slack variables
+            slack = b - A @ x
+            
+            return {
+                'success': True,
+                'optimal_solution': x.tolist(),
+                'optimal_value': optimal_value,
+                'slack_variables': slack.tolist()
+            }
+            
+        except Exception as e:
+            return {
+                'success': False,
+                'error': str(e)
+            }
+    
+    def gradient_descent(self, f: Callable, grad_f: Callable, x0: np.ndarray, 
+                        tolerance: float = None, max_iterations: int = None) -> OptimizationResult:
+        """Simple gradient descent implementation"""
+        if tolerance is None:
+            tolerance = self.tolerance
+        if max_iterations is None:
+            max_iterations = self.max_iterations
+            
+        x = x0.copy()
+        history = {'f_vals': [f(x)]}
+        
+        for iteration in range(max_iterations):
+            grad = grad_f(x)
+            if np.linalg.norm(grad) < tolerance:
+                break
+            
+            # Simple line search
+            alpha = 0.01
+            x = x - alpha * grad
+            history['f_vals'].append(f(x))
+        
+        return OptimizationResult(
+            x_opt=x,
+            f_opt=f(x),
+            iterations=iteration + 1,
+            converged=np.linalg.norm(grad) < tolerance,
+            history=history
+        )
+    
+    def newton_method(self, f: Callable, grad_f: Callable, x0: np.ndarray,
+                     tolerance: float = None, max_iterations: int = None) -> OptimizationResult:
+        """Simple Newton's method implementation"""
+        if tolerance is None:
+            tolerance = self.tolerance
+        if max_iterations is None:
+            max_iterations = self.max_iterations
+            
+        x = x0.copy()
+        history = {'f_vals': [f(x)]}
+        
+        for iteration in range(max_iterations):
+            grad = grad_f(x)
+            if np.linalg.norm(grad) < tolerance:
+                break
+            
+            # Approximate Hessian with identity (simplified)
+            hess_inv = np.eye(len(x))
+            x = x - hess_inv @ grad
+            history['f_vals'].append(f(x))
+        
+        return OptimizationResult(
+            x_opt=x,
+            f_opt=f(x),
+            iterations=iteration + 1,
+            converged=np.linalg.norm(grad) < tolerance,
+            history=history
+        )
+    
+    def nelder_mead(self, f: Callable, x0: np.ndarray,
+                   tolerance: float = None, max_iterations: int = None) -> OptimizationResult:
+        """Simple Nelder-Mead implementation"""
+        if tolerance is None:
+            tolerance = self.tolerance
+        if max_iterations is None:
+            max_iterations = self.max_iterations
+            
+        n = len(x0)
+        # Create initial simplex
+        simplex = [x0.copy()]
+        for i in range(n):
+            x = x0.copy()
+            x[i] += 0.1
+            simplex.append(x)
+        
+        history = {'f_vals': [f(x0)]}
+        
+        for iteration in range(max_iterations):
+            # Evaluate simplex
+            values = [f(x) for x in simplex]
+            
+            # Sort by function value
+            indices = np.argsort(values)
+            simplex = [simplex[i] for i in indices]
+            values = [values[i] for i in indices]
+            
+            # Check convergence
+            if values[-1] - values[0] < tolerance:
+                break
+            
+            # Centroid of best n points
+            centroid = np.mean(simplex[:-1], axis=0)
+            
+            # Reflection
+            reflected = centroid + (centroid - simplex[-1])
+            f_reflected = f(reflected)
+            
+            if values[0] <= f_reflected < values[-2]:
+                simplex[-1] = reflected
+            elif f_reflected < values[0]:
+                # Expansion
+                expanded = centroid + 2 * (reflected - centroid)
+                if f(expanded) < f_reflected:
+                    simplex[-1] = expanded
+                else:
+                    simplex[-1] = reflected
+            else:
+                # Contraction
+                contracted = centroid + 0.5 * (simplex[-1] - centroid)
+                if f(contracted) < values[-1]:
+                    simplex[-1] = contracted
+                else:
+                    # Shrink
+                    for i in range(1, len(simplex)):
+                        simplex[i] = simplex[0] + 0.5 * (simplex[i] - simplex[0])
+            
+            history['f_vals'].append(min(f(x) for x in simplex))
+        
+        best_x = min(simplex, key=f)
+        return OptimizationResult(
+            x_opt=best_x,
+            f_opt=f(best_x),
+            iterations=iteration + 1,
+            converged=True,
+            history=history
+        )
+
     def genetic_algorithm(self, f: Callable, bounds: List[Tuple[float, float]],
                          pop_size: Optional[int] = None,
                          crossover_prob: float = 0.8,
@@ -774,3 +1059,217 @@ class OptimizationAlgorithmsEngine:
         
         result.uncertainty_bounds = uncertainty_bounds
         return result
+    
+    def lagrange_multiplier_optimization(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Lagrange multiplier method for constrained optimization
+        
+        Args:
+            params: Dictionary containing optimization parameters
+        """
+        try:
+            objective_function = params['objective_function']
+            variables = params['variables']
+            constraints = params.get('constraints', [])
+            initial_guess = params['initial_guess']
+            tolerance = params.get('tolerance', self.tolerance)
+            max_iterations = params.get('max_iterations', self.max_iterations)
+            bounds = params.get('bounds', None)
+            
+            import sympy as sp
+            from core.expression_parser import expression_parser
+            
+            # Parse objective function
+            f_expr = expression_parser.parse(objective_function)
+            var_symbols = [sp.Symbol(var) for var in variables]
+            
+            # Parse multiple constraints
+            constraint_exprs = []
+            for constraint in constraints:
+                if constraint['type'] == 'equality':
+                    # Handle multiple constraints separated by newlines or semicolons
+                    expr_str = constraint['expression']
+                    if '\n' in expr_str:
+                        constraint_lines = [line.strip() for line in expr_str.split('\n') if line.strip()]
+                    elif ';' in expr_str:
+                        constraint_lines = [line.strip() for line in expr_str.split(';') if line.strip()]
+                    else:
+                        constraint_lines = [expr_str.strip()]
+                    
+                    for line in constraint_lines:
+                        constraint_exprs.append(expression_parser.parse(line))
+            
+            # Create Lagrangian
+            # L = f - sum(lambda_i * g_i)
+            lambda_symbols = [sp.Symbol(f'lambda_{i}') for i in range(len(constraint_exprs))]
+            all_symbols = var_symbols + lambda_symbols
+            
+            lagrangian = f_expr
+            for i, constraint_expr in enumerate(constraint_exprs):
+                lagrangian = lagrangian - lambda_symbols[i] * constraint_expr
+            
+            # Compute gradient of Lagrangian
+            lagrangian_grad = [sp.diff(lagrangian, var) for var in all_symbols]
+            
+            # Add constraint equations
+            equations = lagrangian_grad + constraint_exprs
+            
+            # Try to solve symbolically
+            try:
+                solutions = sp.solve(equations, all_symbols)
+                
+                if solutions:
+                    if isinstance(solutions, dict):
+                        # Single solution
+                        var_values = [float(solutions[var]) for var in var_symbols]
+                        lambda_values = [float(solutions[lam]) for lam in lambda_symbols]
+                        
+                        # Evaluate objective at solution
+                        obj_value = float(f_expr.subs(dict(zip(var_symbols, var_values))))
+                        
+                        # Check if bounded constraints are satisfied
+                        feasible = True
+                        if bounds:
+                            for i, (lower, upper) in enumerate(bounds):
+                                if not (lower <= var_values[i] <= upper):
+                                    feasible = False
+                                    break
+                        
+                        return {
+                            'success': True,
+                            'optimal_point': var_values,
+                            'optimal_value': obj_value,
+                            'lagrange_multipliers': lambda_values,
+                            'feasible': feasible,
+                            'iterations': 1
+                        }
+                    
+                    elif isinstance(solutions, list):
+                        # Multiple solutions - return the best feasible one
+                        best_solution = None
+                        best_value = float('inf')
+                        
+                        for sol in solutions:
+                            if isinstance(sol, dict):
+                                var_values = [float(sol[var]) for var in var_symbols if var in sol]
+                                if len(var_values) == len(variables):
+                                    # Check bounds
+                                    feasible = True
+                                    if bounds:
+                                        for i, (lower, upper) in enumerate(bounds):
+                                            if not (lower <= var_values[i] <= upper):
+                                                feasible = False
+                                                break
+                                    
+                                    if feasible:
+                                        obj_value = float(f_expr.subs(dict(zip(var_symbols, var_values))))
+                                        if obj_value < best_value:
+                                            best_value = obj_value
+                                            best_solution = {
+                                                'optimal_point': var_values,
+                                                'optimal_value': obj_value,
+                                                'lagrange_multipliers': [float(sol[lam]) for lam in lambda_symbols if lam in sol]
+                                            }
+                        
+                        if best_solution:
+                            return {
+                                'success': True,
+                                'feasible': True,
+                                'iterations': 1,
+                                **best_solution
+                            }
+                
+                # If no symbolic solution found, try numerical approach
+                raise ValueError("No symbolic solution found")
+                
+            except:
+                # Numerical approach using penalty method
+                return self._numerical_lagrange_optimization(
+                    f_expr, var_symbols, constraint_exprs, initial_guess, bounds, tolerance, max_iterations
+                )
+                
+        except Exception as e:
+            return {
+                'success': False,
+                'error': str(e)
+            }
+    
+    def _numerical_lagrange_optimization(self, f_expr, var_symbols, constraint_exprs, 
+                                       initial_guess, bounds, tolerance, max_iterations):
+        """Numerical Lagrange optimization using penalty method"""
+        try:
+            import sympy as sp
+            
+            # Create numerical functions
+            f_func = sp.lambdify(var_symbols, f_expr, 'numpy')
+            constraint_funcs = [sp.lambdify(var_symbols, expr, 'numpy') for expr in constraint_exprs]
+            
+            # Penalty method
+            def penalized_objective(x):
+                obj = float(f_func(*x))
+                penalty = 0
+                
+                # Add penalty for constraint violations
+                for constraint_func in constraint_funcs:
+                    violation = float(constraint_func(*x))
+                    penalty += 1000 * violation**2  # Quadratic penalty
+                
+                # Add penalty for bound violations
+                if bounds:
+                    for i, (lower, upper) in enumerate(bounds):
+                        if x[i] < lower:
+                            penalty += 1000 * (lower - x[i])**2
+                        elif x[i] > upper:
+                            penalty += 1000 * (x[i] - upper)**2
+                
+                return obj + penalty
+            
+            # Use gradient descent
+            x = np.array(initial_guess, dtype=float)
+            history = []
+            
+            for iteration in range(max_iterations):
+                # Numerical gradient
+                grad = np.zeros_like(x)
+                h = 1e-8
+                f0 = penalized_objective(x)
+                
+                for i in range(len(x)):
+                    x_plus = x.copy()
+                    x_plus[i] += h
+                    grad[i] = (penalized_objective(x_plus) - f0) / h
+                
+                if np.linalg.norm(grad) < tolerance:
+                    break
+                
+                # Line search
+                alpha = 0.01
+                x_new = x - alpha * grad
+                
+                # Ensure bounds are respected
+                if bounds:
+                    for i, (lower, upper) in enumerate(bounds):
+                        x_new[i] = np.clip(x_new[i], lower, upper)
+                
+                x = x_new
+                history.append(float(f_func(*x)))
+            
+            # Check constraint satisfaction
+            constraint_violations = [abs(float(func(*x))) for func in constraint_funcs]
+            max_violation = max(constraint_violations) if constraint_violations else 0
+            
+            return {
+                'success': True,
+                'optimal_point': x.tolist(),
+                'optimal_value': float(f_func(*x)),
+                'iterations': iteration + 1,
+                'constraint_violation': max_violation,
+                'feasible': max_violation < tolerance,
+                'convergence_history': history
+            }
+            
+        except Exception as e:
+            return {
+                'success': False,
+                'error': str(e)
+            }

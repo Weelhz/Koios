@@ -519,8 +519,8 @@ def render_multivariable_calculus_section():
     st.markdown("*Partial derivatives, gradients, multiple integrals, and vector calculus*")
     
     # Sub-tabs for different multivariable operations
-    subtab1, subtab2, subtab3, subtab4, subtab5 = st.tabs([
-        "Partial Derivatives", "Gradients & Directional", "Multiple Integrals", "Vector Fields", "Optimization"
+    subtab1, subtab2, subtab3, subtab4 = st.tabs([
+        "Partial Derivatives", "Gradients & Directional", "Multiple Integrals", "Vector Fields"
     ])
     
     with subtab1:
@@ -535,8 +535,7 @@ def render_multivariable_calculus_section():
     with subtab4:
         render_vector_fields()
     
-    with subtab5:
-        render_optimization_section()
+    
 
 def render_partial_derivatives():
     """Render partial derivatives section"""
@@ -1377,187 +1376,7 @@ def verify_greens_theorem(P_expr, Q_expr):
     except Exception as e:
         st.error(f"Error verifying Green's theorem: {str(e)}")
 
-def render_optimization_section():
-    """Render optimization section for multivariable functions"""
-    st.markdown("**Multivariable Optimization**")
-    
-    col1, col2 = st.columns([3, 1])
-    
-    with col1:
-        expression = st.text_input(
-            "Function f(x,y,z,...):",
-            placeholder="x**2 + y**2 - 2*x*y + 3*x",
-            key="optimization_expr"
-        )
-    
-    with col2:
-        variables = st.text_input(
-            "Variables:",
-            value="x,y",
-            key="optimization_vars"
-        )
-    
-    if expression and variables:
-        var_list = [v.strip() for v in variables.split(',') if v.strip()]
-        
-        if st.button("Find Critical Points", key="find_critical_multivar"):
-            try:
-                expr = expression_parser.parse(expression)
-                
-                # Compute gradient components
-                gradient_eqs = []
-                for var in var_list:
-                    partial = sp.diff(expr, sp.Symbol(var))
-                    gradient_eqs.append(partial)
-                
-                st.markdown("**Gradient Equations (set to zero):**")
-                for i, eq in enumerate(gradient_eqs):
-                    st.markdown(f"∂f/∂{var_list[i]} = `{eq}` = 0")
-                
-                # Solve the system of gradient equations
-                symbols = [sp.Symbol(var) for var in var_list]
-                critical_points = sp.solve(gradient_eqs, symbols)
-                
-                st.markdown("**Critical Points:**")
-                if critical_points:
-                    if isinstance(critical_points, dict):
-                        # Single critical point
-                        point_str = ", ".join([f"{var} = {critical_points[sp.Symbol(var)]}" for var in var_list])
-                        st.markdown(f"• ({point_str})")
-                    elif isinstance(critical_points, list):
-                        # Multiple critical points
-                        for i, point in enumerate(critical_points):
-                            if isinstance(point, dict):
-                                point_str = ", ".join([f"{var} = {point[sp.Symbol(var)]}" for var in var_list])
-                                st.markdown(f"• Point {i+1}: ({point_str})")
-                            else:
-                                st.markdown(f"• Point {i+1}: {point}")
-                    else:
-                        st.markdown(f"• {critical_points}")
-                else:
-                    st.markdown("No critical points found or system is too complex to solve analytically")
-                
-                # Hessian matrix for classification
-                if len(var_list) == 2:  # For 2D functions, compute Hessian determinant
-                    st.markdown("---")
-                    st.markdown("**Hessian Matrix Analysis (2D):**")
-                    
-                    x, y = sp.symbols('x y')
-                    fxx = sp.diff(expr, x, 2)
-                    fyy = sp.diff(expr, y, 2)
-                    fxy = sp.diff(expr, x, y)
-                    
-                    st.markdown(f"f_xx = `{fxx}`")
-                    st.markdown(f"f_yy = `{fyy}`")
-                    st.markdown(f"f_xy = `{fxy}`")
-                    
-                    # Hessian determinant
-                    hessian_det = fxx * fyy - fxy**2
-                    st.markdown(f"Hessian determinant = `{hessian_det}`")
-                    
-                    st.markdown("**Classification:** Use the second derivative test:")
-                    st.markdown("• If D > 0 and f_xx > 0: Local minimum")
-                    st.markdown("• If D > 0 and f_xx < 0: Local maximum")
-                    st.markdown("• If D < 0: Saddle point")
-                    st.markdown("• If D = 0: Test is inconclusive")
-                
-            except Exception as e:
-                st.error(f"Error in optimization analysis: {str(e)}")
-        
-        # Constrained optimization (Lagrange multipliers)
-        st.markdown("---")
-        st.markdown("**Constrained Optimization (Lagrange Multipliers)**")
-        
-        constraint = st.text_input(
-            "Constraint g(x,y,z,...) = 0:",
-            placeholder="x**2 + y**2 - 1",
-            key="constraint_expr"
-        )
-        
-        if constraint and st.button("Apply Lagrange Multipliers", key="lagrange_multipliers"):
-            try:
-                f_expr = expression_parser.parse(expression)
-                g_expr = expression_parser.parse(constraint)
-                
-                # Create Lagrangian: L = f - λg
-                lam = sp.Symbol('lambda')
-                symbols = [sp.Symbol(var) for var in var_list]
-                all_symbols = symbols + [lam]
-                
-                # Lagrangian function
-                lagrangian = f_expr - lam * g_expr
-                
-                st.markdown(f"**Lagrangian:** L = f - λg = `{lagrangian}`")
-                
-                # Compute gradient of Lagrangian
-                lagrange_eqs = []
-                
-                # ∇f = λ∇g (gradient equations)
-                for var in var_list:
-                    var_sym = sp.Symbol(var)
-                    eq = sp.diff(f_expr, var_sym) - lam * sp.diff(g_expr, var_sym)
-                    lagrange_eqs.append(eq)
-                
-                # Add constraint equation g = 0
-                lagrange_eqs.append(g_expr)
-                
-                st.markdown("**Lagrange Equations:**")
-                for i, eq in enumerate(lagrange_eqs[:-1]):
-                    st.markdown(f"∇f_{var_list[i]} = λ∇g_{var_list[i]}: `{eq}` = 0")
-                st.markdown(f"Constraint: `{lagrange_eqs[-1]}` = 0")
-                
-                # Solve the Lagrange system
-                try:
-                    solutions = sp.solve(lagrange_eqs, all_symbols)
-                    
-                    st.markdown("**Critical Points on Constraint:**")
-                    if solutions:
-                        if isinstance(solutions, dict):
-                            # Single solution
-                            point_values = [solutions.get(sp.Symbol(var), 'N/A') for var in var_list]
-                            lambda_val = solutions.get(lam, 'N/A')
-                            point_str = ", ".join([f"{var} = {val}" for var, val in zip(var_list, point_values)])
-                            st.markdown(f"• ({point_str}), λ = {lambda_val}")
-                            
-                            # Evaluate function at critical point
-                            try:
-                                subs_dict = {sp.Symbol(var): solutions[sp.Symbol(var)] for var in var_list if sp.Symbol(var) in solutions}
-                                f_value = f_expr.subs(subs_dict)
-                                st.markdown(f"  Function value: f = `{f_value}`")
-                            except:
-                                pass
-                                
-                        elif isinstance(solutions, list):
-                            # Multiple solutions
-                            for i, sol in enumerate(solutions):
-                                if isinstance(sol, dict):
-                                    point_values = [sol.get(sp.Symbol(var), 'N/A') for var in var_list]
-                                    lambda_val = sol.get(lam, 'N/A')
-                                    point_str = ", ".join([f"{var} = {val}" for var, val in zip(var_list, point_values)])
-                                    st.markdown(f"• Point {i+1}: ({point_str}), λ = {lambda_val}")
-                                    
-                                    # Evaluate function at critical point
-                                    try:
-                                        subs_dict = {sp.Symbol(var): sol[sp.Symbol(var)] for var in var_list if sp.Symbol(var) in sol}
-                                        f_value = f_expr.subs(subs_dict)
-                                        st.markdown(f"  Function value: f = `{f_value}`")
-                                    except:
-                                        pass
-                                else:
-                                    st.markdown(f"• Point {i+1}: {sol}")
-                        else:
-                            st.markdown(f"• {solutions}")
-                    else:
-                        st.warning("No solutions found. The constraint may be incompatible or the system may be too complex.")
-                        
-                except Exception as solve_error:
-                    st.warning(f"Could not solve the Lagrange system analytically: {str(solve_error)}")
-                    st.info("Try simplifying the expressions or using numerical methods.")
-                
-            except Exception as e:
-                st.error(f"Error in Lagrange multiplier analysis: {str(e)}")
-        else:
-            st.info("Please enter both a function and constraint to use Lagrange multipliers")
+
 
 def render_differential_equations_section():
     """Render differential equations section"""

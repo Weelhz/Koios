@@ -4,11 +4,232 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from core.optimization_algorithms_engine import OptimizationAlgorithmsEngine, OptimizationType
 
+def render_multivariable_optimization():
+    """Render multivariable optimization section"""
+    st.subheader("Multivariable Optimization")
+    st.markdown("*Find critical points and analyze multivariable functions*")
+    
+    from core.optimization_algorithms_engine import OptimizationAlgorithmsEngine
+    from core.expression_parser import expression_parser
+    import sympy as sp
+    
+    engine = OptimizationAlgorithmsEngine()
+    
+    col1, col2 = st.columns([3, 1])
+    
+    with col1:
+        expression = st.text_input(
+            "Function f(x,y,z,...):",
+            placeholder="x**2 + y**2 - 2*x*y + 3*x",
+            key="multivar_optimization_expr"
+        )
+    
+    with col2:
+        variables = st.text_input(
+            "Variables:",
+            value="x,y",
+            key="multivar_optimization_vars"
+        )
+    
+    if expression and variables:
+        var_list = [v.strip() for v in variables.split(',') if v.strip()]
+        
+        if st.button("Find Critical Points", key="find_critical_multivar_opt"):
+            try:
+                expr = expression_parser.parse(expression)
+                
+                # Compute gradient components
+                gradient_eqs = []
+                for var in var_list:
+                    partial = sp.diff(expr, sp.Symbol(var))
+                    gradient_eqs.append(partial)
+                
+                st.markdown("**Gradient Equations (set to zero):**")
+                for i, eq in enumerate(gradient_eqs):
+                    st.markdown(f"∂f/∂{var_list[i]} = `{eq}` = 0")
+                
+                # Solve the system of gradient equations
+                symbols = [sp.Symbol(var) for var in var_list]
+                critical_points = sp.solve(gradient_eqs, symbols)
+                
+                st.markdown("**Critical Points:**")
+                if critical_points:
+                    if isinstance(critical_points, dict):
+                        # Single critical point
+                        point_str = ", ".join([f"{var} = {critical_points[sp.Symbol(var)]}" for var in var_list])
+                        st.markdown(f"• ({point_str})")
+                    elif isinstance(critical_points, list):
+                        # Multiple critical points
+                        for i, point in enumerate(critical_points):
+                            if isinstance(point, dict):
+                                point_str = ", ".join([f"{var} = {point[sp.Symbol(var)]}" for var in var_list])
+                                st.markdown(f"• Point {i+1}: ({point_str})")
+                            else:
+                                st.markdown(f"• Point {i+1}: {point}")
+                    else:
+                        st.markdown(f"• {critical_points}")
+                else:
+                    st.markdown("No critical points found or system is too complex to solve analytically")
+                
+                # Hessian matrix for classification
+                if len(var_list) == 2:  # For 2D functions, compute Hessian determinant
+                    st.markdown("---")
+                    st.markdown("**Hessian Matrix Analysis (2D):**")
+                    
+                    x, y = sp.symbols('x y')
+                    fxx = sp.diff(expr, x, 2)
+                    fyy = sp.diff(expr, y, 2)
+                    fxy = sp.diff(expr, x, y)
+                    
+                    st.markdown(f"f_xx = `{fxx}`")
+                    st.markdown(f"f_yy = `{fyy}`")
+                    st.markdown(f"f_xy = `{fxy}`")
+                    
+                    # Hessian determinant
+                    hessian_det = fxx * fyy - fxy**2
+                    st.markdown(f"Hessian determinant = `{hessian_det}`")
+                    
+                    st.markdown("**Classification:** Use the second derivative test:")
+                    st.markdown("• If D > 0 and f_xx > 0: Local minimum")
+                    st.markdown("• If D > 0 and f_xx < 0: Local maximum")
+                    st.markdown("• If D < 0: Saddle point")
+                    st.markdown("• If D = 0: Test is inconclusive")
+                
+            except Exception as e:
+                st.error(f"Error in optimization analysis: {str(e)}")
+
+def render_lagrange_optimization():
+    """Render Lagrange multiplier optimization section"""
+    st.subheader("Lagrange Multiplier Optimization")
+    st.markdown("*Constrained optimization using Lagrange multipliers with optional bounds*")
+    
+    from core.optimization_algorithms_engine import OptimizationAlgorithmsEngine
+    
+    engine = OptimizationAlgorithmsEngine()
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("**Objective Function**")
+        objective = st.text_input(
+            "Function f(x,y,z,...):",
+            placeholder="x**2 + y**2",
+            key="lagrange_objective"
+        )
+        
+        variables = st.text_input(
+            "Variables (comma-separated):",
+            value="x,y",
+            key="lagrange_vars"
+        )
+        
+        initial_guess = st.text_input(
+            "Initial guess (comma-separated):",
+            value="1,1",
+            key="lagrange_initial"
+        )
+    
+    with col2:
+        st.markdown("**Constraints**")
+        constraint_type = st.selectbox(
+            "Constraint type:",
+            ["equality"],
+            key="lagrange_constraint_type"
+        )
+        
+        constraint_expr = st.text_input(
+            "Constraint g(x,y,z,...) = 0:",
+            placeholder="x**2 + y**2 - 1",
+            key="lagrange_constraint"
+        )
+        
+        # Bounds
+        use_bounds = st.checkbox("Add variable bounds", key="lagrange_use_bounds")
+        
+        if use_bounds:
+            bounds_input = st.text_input(
+                "Bounds (lower,upper; lower,upper; ...):",
+                placeholder="-10,10; -10,10",
+                key="lagrange_bounds"
+            )
+    
+    if objective and variables and constraint_expr and initial_guess:
+        if st.button("Solve with Lagrange Multipliers", key="solve_lagrange"):
+            try:
+                # Parse inputs
+                var_list = [v.strip() for v in variables.split(',') if v.strip()]
+                initial_vals = [float(x.strip()) for x in initial_guess.split(',')]
+                
+                # Parse bounds if provided
+                bounds = None
+                if use_bounds and bounds_input:
+                    bound_pairs = []
+                    for bound_str in bounds_input.split(';'):
+                        lower, upper = bound_str.split(',')
+                        bound_pairs.append((float(lower.strip()), float(upper.strip())))
+                    bounds = bound_pairs
+                
+                # Prepare parameters
+                params = {
+                    'objective_function': objective,
+                    'variables': var_list,
+                    'constraints': [{
+                        'type': 'equality',
+                        'expression': constraint_expr
+                    }],
+                    'initial_guess': initial_vals,
+                    'bounds': bounds
+                }
+                
+                # Solve
+                result = engine.lagrange_multiplier_optimization(params)
+                
+                if result['success']:
+                    st.success("Lagrange optimization completed!")
+                    
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.markdown("**Optimal Point:**")
+                        for i, var in enumerate(var_list):
+                            st.write(f"{var} = {result['optimal_point'][i]:.6f}")
+                        
+                        st.markdown(f"**Optimal Value:** {result['optimal_value']:.6f}")
+                        
+                        if 'constraint_violation' in result:
+                            st.info(f"Constraint violation: {result['constraint_violation']:.2e}")
+                    
+                    with col2:
+                        if 'lagrange_multipliers' in result:
+                            st.markdown("**Lagrange Multipliers:**")
+                            for i, lam in enumerate(result['lagrange_multipliers']):
+                                st.write(f"λ_{i+1} = {lam:.6f}")
+                        
+                        st.info(f"Iterations: {result['iterations']}")
+                        st.info(f"Feasible: {result.get('feasible', 'Unknown')}")
+                    
+                    # Show convergence if available
+                    if 'convergence_history' in result and result['convergence_history']:
+                        st.markdown("**Convergence History:**")
+                        history = result['convergence_history']
+                        for i, val in enumerate(history[-5:]):  # Show last 5
+                            st.write(f"Iter {len(history)-5+i+1}: {val:.6f}")
+                
+                else:
+                    st.error(f"Lagrange optimization failed: {result['error']}")
+                    
+            except Exception as e:
+                st.error(f"Error: {str(e)}")
+    else:
+        st.info("Please fill in all required fields (objective, variables, constraint, initial guess)")
+
 def render_optimization_panel():
     """Render the optimization algorithms interface"""
     st.header("Advanced Optimization Algorithms")
     
     tabs = st.tabs([
+        "Multivariable Optimization",
+        "Lagrange Optimization", 
         "Gradient-Based",
         "Evolutionary",
         "Multi-Objective",
@@ -17,18 +238,24 @@ def render_optimization_panel():
     ])
     
     with tabs[0]:
-        render_gradient_based()
+        render_multivariable_optimization()
     
     with tabs[1]:
+        render_lagrange_optimization()
+    
+    with tabs[2]:
+        render_gradient_based()
+    
+    with tabs[3]:
         render_evolutionary()
         
-    with tabs[2]:
+    with tabs[4]:
         render_multi_objective()
         
-    with tabs[3]:
+    with tabs[5]:
         render_constrained()
         
-    with tabs[4]:
+    with tabs[6]:
         render_robust_stochastic()
 
 def render_gradient_based():
